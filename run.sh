@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Set bash to 'debug' mode, it will exit on :
+# -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
+set -exo pipefail
+
 eval "$(conda shell.bash hook)"
 conda activate appbio_project
 
@@ -15,16 +19,16 @@ skip_align=false        # Skip alignment stages.
 skip_eval=false         # Skip evaluation stages.
 ncpu=6                  # The number of cpus.
 python=python3          # Specify python to execute espnet commands.
-clean=gzip              # Cleaning processed files.
+clean=0                 # Cleaning processed files.
 quality=0.80            # Quality filter threshold for retaining reads. 
-mapping=5               # Mapping reads
+mapping="5"             # Mapping read end
 read_len_min=25         # Minimum length of reads included
 read_len_max=35         # Maximum length of reads included
 normalised=rpm          # Read data type
-mapped_twice=false      # Reads mapped twice
-metag_threshold=30      # Raw counts around start or stop if less ignore a gene/region
-metag_span=60           # Number of nucleotides before and after start/stop in metagene profiles
-metag_spancorr=90       # number of nucleotides before and after start/stop in metagenomic profile from corrected data
+mapped_twice=0          # Reads mapped twice, 0 for false and 1 for true
+metagene_threshold=30   # Raw counts around start or stop if less ignore a gene/region
+metagene_span=60        # Number of nucleotides before and after start/stop in metagene profiles
+metagene_spancorr=90    # number of nucleotides before and after start/stop in metagenomic profile from corrected data
 gene_raw_mean_thr=0.3   # Percentage of raw counts per 100 nt
 codon_raw_mean_thr=1.6  # Raw counts per codon. 1.6 indicates 6 counts
 codons_before_psite=1   #
@@ -44,22 +48,20 @@ Options:
     --stop_stage        # Processes is stopped at the specified stage (default="${stop_stage}").
     --skip_align        # Skip alignment stages (default="${skip_align}").
     --skip_eval         # Skip evaluation stages (default="${skip_eval}").
-    --ncpu              # The number of cpus (default="${ncpu}").
+    --ncpu              # The number of cpus for parallel processing (default="${ncpu}").
     --python            # Specify python version (default="${python}").
-    --clean             # bgzip - Gzip files after they are no longer necessary using multiple threads - 6 is hard coded
-                        # gzip  - Gzip files after they are no longer necessary
-                        # rm - Remove files after they are no longer necessary (default="${clean}").  
+    --clean             # Remove files after they are no longer necessary (default="${clean}").
     --quality           # Quality filter threshold for retaining reads based on PHRED scores. Higher is more selective (default="${quality}").
     --mapping           # 5 maps reads according to their 5' end. 3 maps reads according to their 3' end (default="${mapping}").
     --read_len_min      # Minimum length of reads included (default="${read_len_min}").
     --read_len_max      # Maximum length of reads included (default="${read_len_max}").
     --normalised        # rpm - use normalized data (reads per million raw), raw - raw counts (default="${normalised}").
     --mapped_twice      # Reads mapped once or twice (default="${mapped_twice}").
-    --metag_threshold   # Raw counts around start or stop if less ignore a gene/region (default="${metag_threshold}").
+    --metagene_threshold# Raw counts around start or stop if less ignore a gene/region (default="${metagene_threshold}").
                         # If Normalized = "rpm"  MetagThreshold is readjusted by dividing normalization_factor inside program FILTER 3.
-    --metag_span        # Number of nucleotides before and after start/stop in metagene profiles (default="${metag_span}").
-    --metag_spancorr    # Number of nucleotides before and after start/stop in metagenomic profile from corrected data 
-                        # (default="${metag_span}").
+    --metagene_span     # Number of nucleotides before and after start/stop in metagene profiles (default="${metagene_span}").
+    --metagene_spancorr # Number of nucleotides before and after start/stop in metagenomic profile from corrected data 
+                        # (default="${metagene_span}").
     --gene_raw_mean_thr # Percentage of raw counts per 100 nt. - low threshold (default="${gene_raw_mean_thr}").
                         # FILTER 1  - is used in functions codonTablesA & codonTablesB converted to GeneRpmMeanThr
                         # GeneRpmMeanThr = GeneRawMeanThr / norm_factor
@@ -114,7 +116,7 @@ fi
 
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
     log "Step 2: Quality filter the trimmed FASTQ files based on the PHRED scores."
-    ${python} local/qc.py --rawdir ${rawdir} --names "${samples}" --threshold ${quality} \
+    ${python} local/quality_filtering --rawdir ${rawdir} --names "${samples}" --threshold ${quality} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}
 fi
 
@@ -142,3 +144,34 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
             -U ${input} -S ${output} > ${basedir}/4-Aligned/Reports/${sample}.txt || exit 1
     done
 fi
+
+if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
+    log "Step 5: Converting files from SAM format to BAM"
+    for sample in ${samples}; do
+        sam=${basedir}/4-Aligned/${sample}.sam
+        bam=${basedir}/4-Aligned/${sample}.bam
+        # convert sam to bam
+        samtools view -S -b ${sam} -o ${bam}.unsorted 
+        # sort converted bam
+        samtools sort ${bam}.unsorted -o ${bam}
+        rm ${bam}.tmp
+        # index sorted bam
+        samtools index ${bam}
+    done
+fi
+
+if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
+    log "Step 6: Processing raw assignments"
+    ${python} local/process_raw_assignment.py --rawdir ${rawdir} --names "${samples}" \
+        --mapped_twice ${mapped_twice} --mapping ${mapping} \
+        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+fi
+
+if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
+    log "Step 6: Creating Meta-Gene Tables"
+    ${python} local/create_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
+        --metagene_span ${metagene_span} --metagene_threshold ${metag_threshold} \
+        --mapped_twice ${mapped_twice} --mapping ${mapping} --normalised ${normalised} \
+        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+fi
+
