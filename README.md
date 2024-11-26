@@ -22,14 +22,14 @@
 4) [HISAT2](ftp://ftp.ccb.jhu.edu/pub/infphilo/hisat2/downloads)
 
 ```
-   conda install bioconda::hisat2
+    conda install bioconda::hisat2
 ```   
    Hisat2 trims ends of reads with bad quality by default. That leads to uncorrect mapping of ribosome location. From the version 2.0.5 there is an option to turn this behavior off.
 
 5) [bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml)
 
 ```
-   conda install bioconda::bowtie2
+    conda install bioconda::bowtie2
 ```   
 
 6) [samtools](https://github.com/samtools/samtools/)
@@ -43,6 +43,14 @@
 ```
     conda install bioconda::pysam
 ```
+
+### Install using environment
+
+  An easier way to replicate the packages and its dependencies is to just use the environment.yml to create an identical conda environment.
+
+```
+    conda env create -f environment.yml
+``` 
 
 ### Additional data files
 

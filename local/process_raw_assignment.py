@@ -4,10 +4,10 @@ import argparse
 from pathlib import Path
 import pysam
 from collections import Counter, defaultdict
+
 import warnings
 import tables
 
-# Suppress warnings
 warnings.filterwarnings("ignore", category=tables.NaturalNameWarning)
 
 
@@ -77,7 +77,7 @@ def update_dataframe(df, chromosome, strand):
     return df[columns]
 
 
-def restructure_hdf5(input_file, output_file, close_file=True):
+def restructure_hdf5(input_file, output_file):
     """
     Restructure HDF5 file from one-level keys to two-level keys by chromosome.
     """
@@ -89,8 +89,6 @@ def restructure_hdf5(input_file, output_file, close_file=True):
                     chromosome_data = data[data.Chromosome == chromosome].copy()
                     chromosome_data.set_index("Position", inplace=True)
                     out_h5.put(f"{key}/{chromosome}", chromosome_data)
-    if not close_file:
-        return out_h5
 
 
 def save_to_csv(dataframe, output_file):
@@ -120,30 +118,35 @@ def process_raw_assignment(args):
         bam_file = pysam.AlignmentFile(bam_file_path, "rb")
 
         forward_raw_csv = (
-            assign_dir / f"{sample}_{mapping_type}-End_{read_len_range}_raw_iv_For.txt"
+            assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}_raw_For.txt"
         )
         reverse_raw_csv = (
-            assign_dir / f"{sample}_{mapping_type}-End_{read_len_range}_raw_iv_Rev.txt"
+            assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}_raw_Rev.txt"
         )
         forward_rpm_csv = (
-            assign_dir / f"{sample}_{mapping_type}-End_{read_len_range}_rpm_iv_For.txt"
+            assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}_rpm_For.txt"
         )
         reverse_rpm_csv = (
-            assign_dir / f"{sample}_{mapping_type}-End_{read_len_range}_rpm_iv_Rev.txt"
+            assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}_rpm_Rev.txt"
         )
 
-        output_hdf5 = assign_dir / f"{sample}_{mapping_type}-End_{read_len_range}_iv.h5"
+        output_hdf5 = assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}.h5"
         restructured_hdf5 = (
-            assign_dir / f"{sample}_{mapping_type}-End_{read_len_range}_idx_iv.h5"
+            assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}_restructured.h5"
         )
 
         log_file_path = (
-            reports_dir / f"{sample}_{mapping_type}-End_{read_len_range}_iv_log.txt"
+            reports_dir / f"{sample}_{mapping_type}-end_{read_len_range}.log"
         )
         log_file = open(log_file_path, "wt")
 
         total_reads, reads_mapped_once, reads_mapped_twice = 0, 0, 0
         forward_summary, reverse_summary = pd.DataFrame(), pd.DataFrame()
+
+        report = "\nBamFile: {}\nrlmin: {}\nrlmax: {}\nName: {}\nMapping: {}".format(
+            bam_file_path, read_len_min, read_len_max, sample, mapping_type
+        )
+        log_file.write(report + "\n")
 
         for chromosome in yeast_chromosomes():
             chrom_reads, forward_counts, reverse_counts = (
@@ -220,6 +223,15 @@ def process_raw_assignment(args):
             store.put("Forward_Raw", forward_summary, format="table", data_columns=True)
             store.put("Reverse_Raw", reverse_summary, format="table", data_columns=True)
 
+        report = "\nTotal No of reads {:>11,} mapped to genome\n".format(total_reads)
+        report += "Number of reads {:>11,d} mapped once to genome\n".format(
+            reads_mapped_once
+        )
+        report += "Number of reads {:>11,d} mapped twice to genome\n".format(
+            reads_mapped_twice
+        )
+        log_file.write(report + "\n")
+
         # Normalize and save RPM data
         normalization_factor = (
             sum(
@@ -237,12 +249,13 @@ def process_raw_assignment(args):
             save_to_csv(forward_summary, forward_rpm_csv)
             save_to_csv(reverse_summary, reverse_rpm_csv)
 
-        with pd.HDFStore(output_hdf5, mode="a") as store:
+        with pd.HDFStore(output_hdf5, complevel=5, complib="zlib", mode="a") as store:
             store.put("Forward_RPM", forward_summary, format="table", data_columns=True)
             store.put("Reverse_RPM", reverse_summary, format="table", data_columns=True)
 
         restructure_hdf5(output_hdf5, restructured_hdf5)
-        log_file.write(f"Restructured HDF5: {restructured_hdf5}\n")
+        log_file.write(f"\nRestructured HDF5: {restructured_hdf5}\n")
+
         log_file.close()
         bam_file.close()
 

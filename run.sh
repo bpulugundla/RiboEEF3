@@ -2,10 +2,10 @@
 
 # Set bash to 'debug' mode, it will exit on :
 # -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
-set -exo pipefail
+set -euo pipefail
 
 eval "$(conda shell.bash hook)"
-conda activate appbio_project
+conda activate eef3_project
 
 log() {
     local fname=${BASH_SOURCE[1]##*/}
@@ -14,7 +14,7 @@ log() {
 
 # General configuration
 stage=1                 # Processes starts from the specified stage.
-stop_stage=0            # Processes is stopped at the specified stage.
+stop_stage=10            # Processes is stopped at the specified stage.
 skip_align=false        # Skip alignment stages.
 skip_eval=false         # Skip evaluation stages.
 ncpu=6                  # The number of cpus.
@@ -87,8 +87,6 @@ log "$0 $*"
 run_args=$(utils/print_args.sh $0 "$@")
 . utils/parse_options.sh
 
-echo "${run_args}"
-
 basedir=$(dirname "${rawdir}")
 samples="${groupA} ${groupB}" 
 
@@ -103,8 +101,33 @@ for name in ${groupB}; do
     [ ! -f ${rawdir}/$name.fastq.gz ] && echo "$0: Sample ${name} not found at ${rawdir}/$name" && exit 1;
 done
 
+# Define a function to check if a stage is already completed
+is_stage_completed() {
+    local stage_number=$1
+    local marker_file="stage_${stage_number}_done.marker"
+
+    if [ -f "${marker_file}" ]; then
+        log "Stage ${stage_number} has already been completed. Skipping..."
+        return 0  # Indicate stage is completed
+    else
+        return 1  # Indicate stage is not completed
+    fi
+}
+
+# Define a function to mark a stage as completed
+mark_stage_completed() {
+    local stage_number=$1
+    local marker_file="stage_${stage_number}_done.marker"
+    touch "${marker_file}"
+    log "Stage ${stage_number} marked as completed."
+}
+
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
-    log "Step 1: Trimming adapter sequnces from the ${samples} FASTQ files in ${rawdir} using CutAdapt. CutAdapt removes adapter sequences from high-throughput sequencing reads."
+    if is_stage_completed 1; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
+    log "Step 1: Trimming adapter sequnces from the ${samples} FASTQ files in ${rawdir} using CutAdapt. CutAdapt here removes the adapter sequence CTGTAGGCACCATCAAT from high-throughput sequencing reads."
     mkdir -p ${basedir}/1-Trimmed ${basedir}/1-Trimmed/Reports
     for sample in ${samples}; do
         input="${rawdir}/${sample}.fastq.gz"
@@ -112,15 +135,28 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
         cutadapt --discard-untrimmed -j ${ncpu} -a "CTGTAGGCACCATCAAT" \
             -o ${output} ${input} > ${basedir}/1-Trimmed/Reports/${sample}.txt || exit 1
     done
+
+    # Mark stage 1 as completed
+    mark_stage_completed 1
 fi
 
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
+    if is_stage_completed 2; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
     log "Step 2: Quality filter the trimmed FASTQ files based on the PHRED scores."
     ${python} local/quality_filtering --rawdir ${rawdir} --names "${samples}" --threshold ${quality} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+
+    mark_stage_completed 2
 fi
 
 if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
+    if is_stage_completed 3; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
     log "Step 3: Remove non-coding RNAs sequences from the filtered FASTQ files using Bowtie2."
     mkdir -p ${basedir}/3-Subtracted ${basedir}/3-Subtracted/Reports ${basedir}/3-Subtracted/SAM
     for sample in ${samples}; do 
@@ -131,9 +167,15 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         bowtie2 --no-unal -p ${ncpu} --un ${unmapped} -x ${ncRNA} \
             -U ${input} -S ${output} > ${basedir}/3-Subtracted/Reports/${sample}.txt || exit 1
     done
+
+    mark_stage_completed 3
 fi
 
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
+    if is_stage_completed 4; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
     log "Step 4: Align sequences to the genome from the ncRNA subtracted FASTQ files"
     mkdir -p ${basedir}/4-Aligned ${basedir}/4-Aligned/Reports
     for sample in ${samples}; do
@@ -143,9 +185,15 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         hisat2 --no-unal -p ${ncpu} -k 2 --no-softclip --dta -x ${genome} \
             -U ${input} -S ${output} > ${basedir}/4-Aligned/Reports/${sample}.txt || exit 1
     done
+
+    mark_stage_completed 4
 fi
 
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
+    if is_stage_completed 5; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
     log "Step 5: Converting files from SAM format to BAM"
     for sample in ${samples}; do
         sam=${basedir}/4-Aligned/${sample}.sam
@@ -154,24 +202,50 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         samtools view -S -b ${sam} -o ${bam}.unsorted 
         # sort converted bam
         samtools sort ${bam}.unsorted -o ${bam}
-        rm ${bam}.tmp
+        rm ${bam}.unsorted
         # index sorted bam
         samtools index ${bam}
     done
+
+    mark_stage_completed 5
 fi
 
 if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
+    if is_stage_completed 6; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
     log "Step 6: Processing raw assignments"
     ${python} local/process_raw_assignment.py --rawdir ${rawdir} --names "${samples}" \
         --mapped_twice ${mapped_twice} --mapping ${mapping} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+
+    mark_stage_completed 6
 fi
 
 if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
-    log "Step 6: Creating Meta-Gene Tables"
+    if is_stage_completed 7; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
+    log "Step 7: Creating Meta-Gene Tables"
     ${python} local/create_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
-        --metagene_span ${metagene_span} --metagene_threshold ${metag_threshold} \
+        --metagene_span ${metagene_span} --metagene_threshold ${metagene_threshold} \
         --mapped_twice ${mapped_twice} --mapping ${mapping} --normalised ${normalised} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+
+    mark_stage_completed 7
 fi
 
+if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
+    if is_stage_completed 8; then
+        echo "Remove the marker file to re-run this stage" && exit 1
+    fi
+
+    log "Step 8: Creating Meta-Gene Plots"
+    ${python} local/plot_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
+        --metagene_span ${metagene_span} --mapping ${mapping} --normalised ${normalised} \
+        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+
+    mark_stage_completed 8
+fi

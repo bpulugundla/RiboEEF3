@@ -4,6 +4,12 @@ import gzip
 import argparse
 from pathlib import Path
 
+import warnings
+import tables
+
+# Suppress warnings from tables module
+warnings.filterwarnings("ignore", category=tables.NaturalNameWarning)
+
 
 def parse_args():
     """
@@ -102,7 +108,7 @@ def quality_filtering(args):
     os.makedirs(reports_dir, exist_ok=True)
 
     # Log file to record quality filtering details
-    log_file_path = f"{reports_dir}/Quality_filtering_iv_log.txt"
+    log_file_path = f"{reports_dir}/Quality_filtering.log"
     log_file = open(log_file_path, "wt")
 
     # Process each sample specified in the `--names` argument

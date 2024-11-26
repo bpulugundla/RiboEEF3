@@ -9,7 +9,6 @@ from process_raw_assignment import yeast_chromosomes
 import warnings
 import tables
 
-# Suppress warnings from tables module
 warnings.filterwarnings("ignore", category=tables.NaturalNameWarning)
 
 
@@ -208,9 +207,7 @@ def create_meta_gene_tables(args):
 
     columns = [str(i) for i in range(read_len_min, read_len_max + 1)] + ["sum"]
     read_len_range = f"{read_len_min}-{read_len_max}"
-    log_file_path = (
-        reports_dir / f"MetaGeneTables_{mapping}-End_{read_len_range}_iv_log.txt"
-    )
+    log_file_path = reports_dir / f"MetaGeneTables_{mapping}-end_{read_len_range}.log"
 
     with open(log_file_path, "wt") as log_file:
         sample_names = args.names.split()
@@ -219,14 +216,12 @@ def create_meta_gene_tables(args):
             log_file.write(f"\nProcessing sample: {sample}\n")
 
             # File paths
-            filename_body = f"{sample}_{mapping}-End_{read_len_range}"
+            filename = f"{sample}_{mapping}-end_{read_len_range}"
             output_start = (
-                metagene_dir / f"{filename_body}_{normalization}_Start_iv_Meta_Sum.txt"
+                metagene_dir / f"{filename}_{normalization}_Start_Meta_Sum.txt"
             )
-            output_stop = (
-                metagene_dir / f"{filename_body}_{normalization}_Stop_iv_Meta_Sum.txt"
-            )
-            input_h5 = base_dir / f"5-AssignRaw/{filename_body}_iv.h5"
+            output_stop = metagene_dir / f"{filename}_{normalization}_Stop_Meta_Sum.txt"
+            input_h5 = base_dir / f"5-AssignRaw/{filename}.h5"
 
             # Initialize empty meta-gene DataFrames
             meta_start_f = pd.DataFrame(0, index=range(2 * span + 1), columns=columns)
@@ -238,22 +233,17 @@ def create_meta_gene_tables(args):
             threshold = args.metagene_threshold
             if normalization == "rpm":
                 bam_file = base_dir / f"4-Aligned/{sample}.bam"
-                # threshold = raw_metag_threshold_to_rpm(
-                #    bam_file, threshold, args.mapped_twice
-                # )
                 bam_metrics = process_bam_metrics(
                     bam_file, args.mapped_twice, threshold
                 )
                 threshold = bam_metrics["rpm_threshold"]
 
-            print(f"Read Count: {bam_metrics['read_count']}")
-            print(f"Normalization Factor: {bam_metrics['normalization_factor']}")
+            log_file.write(f"Read Count: {bam_metrics['read_count']}")
+            log_file.write(
+                f"Normalization Factor: {bam_metrics['normalization_factor']}"
+            )
             if "rpm_threshold" in bam_metrics:
-                print(f"RPM Threshold: {bam_metrics['rpm_threshold']}")
-
-            # log_file.write(
-            #    f"Threshold for metagene: {threshold:.1f} ({normalization})\n"
-            # )
+                log_file.write(f"RPM Threshold: {bam_metrics['rpm_threshold']}")
 
             # Process chromosomes and GTF annotations
             tabix_file = pysam.TabixFile(
@@ -330,10 +320,15 @@ def create_meta_gene_tables(args):
             meta_start_sum = meta_start_f + meta_start_r
             meta_stop_sum = meta_stop_f + meta_stop_r
 
-            meta_start_sum.to_csv(output_start, sep="\t")
-            meta_stop_sum.to_csv(output_stop, sep="\t")
+            meta_start_sum["rel_pos"] = list(range(-span, span + 1))
+            meta_start_sum.to_csv(output_start, sep="\t", header=True, index=True)
+
+            meta_stop_sum["rel_pos"] = list(range(-span, span + 1))
+            meta_stop_sum.to_csv(output_stop, sep="\t", header=True, index=True)
 
             log_file.write(f"Meta-gene tables saved for {sample}.\n")
+
+        log_file.close()
 
 
 def main():
