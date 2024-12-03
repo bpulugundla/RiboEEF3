@@ -1,0 +1,12 @@
+Sample_ID   Source_Name             Protocol    Compound
+ERR2660262  S1_eEF3_normal_rep1     Ribo-Seq    None
+ERR2660266  S2_eEF3_depleted_rep1   Ribo-Seq    Methionine_0.5
+ERR2660263  S3_eEF3_normal_rep2     Ribo-Seq    None
+ERR2660267  S4_eEF3_depleted_rep2   Ribo-Seq    Methionine_0.5
+ERR2660264  S5_eEF3_normal_rep1     RNA-Seq     None
+ERR2660269  S6_eEF3_depleted_rep1   RNA-Seq     Methionine_0.5
+ERR2660265  S7_eEF3_normal_rep2     RNA-Seq     None
+ERR2660271  S8_eEF3_depleted_rep2   RNA-Seq     Methionine_0.5
+
+
+Data downloaded from https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-6938/

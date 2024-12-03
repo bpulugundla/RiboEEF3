@@ -4,6 +4,7 @@
 # -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
 set -euo pipefail
 
+# Activate the conda environment with the installed dependecies
 eval "$(conda shell.bash hook)"
 conda activate eef3_project
 
@@ -186,6 +187,19 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
             -U ${input} -S ${output} > ${basedir}/4-Aligned/Reports/${sample}.txt || exit 1
     done
 
+    log "\nConverting files from SAM format to BAM"
+    for sample in ${samples}; do
+        sam=${basedir}/4-Aligned/${sample}.sam
+        bam=${basedir}/4-Aligned/${sample}.bam
+        # convert sam to bam
+        samtools view -S -b ${sam} -o ${bam}.unsorted 
+        # sort converted bam
+        samtools sort ${bam}.unsorted -o ${bam}
+        # index sorted bam
+        samtools index ${bam}
+        rm ${bam}.unsorted
+    done
+
     mark_stage_completed 4
 fi
 
@@ -194,18 +208,10 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 5: Converting files from SAM format to BAM"
-    for sample in ${samples}; do
-        sam=${basedir}/4-Aligned/${sample}.sam
-        bam=${basedir}/4-Aligned/${sample}.bam
-        # convert sam to bam
-        samtools view -S -b ${sam} -o ${bam}.unsorted 
-        # sort converted bam
-        samtools sort ${bam}.unsorted -o ${bam}
-        rm ${bam}.unsorted
-        # index sorted bam
-        samtools index ${bam}
-    done
+    log "Step 5: Processing raw assignments"
+    ${python} local/process_raw_assignment.py --rawdir ${rawdir} --names "${samples}" \
+        --mapped_twice ${mapped_twice} --mapping ${mapping} \
+        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
 
     mark_stage_completed 5
 fi
@@ -215,9 +221,10 @@ if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 6: Processing raw assignments"
-    ${python} local/process_raw_assignment.py --rawdir ${rawdir} --names "${samples}" \
-        --mapped_twice ${mapped_twice} --mapping ${mapping} \
+    log "Step 6: Creating Meta-Gene Tables"
+    ${python} local/create_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
+        --metagene_span ${metagene_span} --metagene_threshold ${metagene_threshold} \
+        --mapped_twice ${mapped_twice} --mapping ${mapping} --normalised ${normalised} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}
 
     mark_stage_completed 6
@@ -228,24 +235,10 @@ if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 7: Creating Meta-Gene Tables"
-    ${python} local/create_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
-        --metagene_span ${metagene_span} --metagene_threshold ${metagene_threshold} \
-        --mapped_twice ${mapped_twice} --mapping ${mapping} --normalised ${normalised} \
-        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
-
-    mark_stage_completed 7
-fi
-
-if [ ${stage} -le 8 ] && [ ${stop_stage} -ge 8 ]; then
-    if is_stage_completed 8; then
-        echo "Remove the marker file to re-run this stage" && exit 1
-    fi
-
-    log "Step 8: Creating Meta-Gene Plots"
+    log "Step 7: Creating Meta-Gene Plots"
     ${python} local/plot_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
         --metagene_span ${metagene_span} --mapping ${mapping} --normalised ${normalised} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}
 
-    mark_stage_completed 8
+    mark_stage_completed 7
 fi

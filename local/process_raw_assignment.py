@@ -253,8 +253,9 @@ def process_raw_assignment(args):
             store.put("Forward_RPM", forward_summary, format="table", data_columns=True)
             store.put("Reverse_RPM", reverse_summary, format="table", data_columns=True)
 
-        restructure_hdf5(output_hdf5, restructured_hdf5)
-        log_file.write(f"\nRestructured HDF5: {restructured_hdf5}\n")
+        # TODO: Causing a weird bug. Needs to be fixed. Don't need this for now.
+        # restructure_hdf5(output_hdf5, restructured_hdf5)
+        # log_file.write(f"\nRestructured HDF5: {restructured_hdf5}\n")
 
         log_file.close()
         bam_file.close()

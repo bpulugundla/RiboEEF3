@@ -176,7 +176,7 @@ def process_codon(
         index = range(gtf.end - span - 1, gtf.end + span)
 
     # Extract a sub-dataframe around the feature
-    df = df_source[start - span : start + span][columns].copy()
+    df = df_source.iloc[start - span : start + span][columns].copy()
 
     # Skip if there's not enough data
     if not_enough_data(df, threshold):
