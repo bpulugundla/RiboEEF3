@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
+"""
+Author: Bhargav Pulugundla
+Last Updated: 13-Dec-2024
+
+This project focuses on replicating and validating the findings presented by Kasari et al. in their study, available at: https://www.nature.com/articles/s41598-019-39403-y.
+"""
 
 # Set bash to 'debug' mode, it will exit on :
 # -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
 set -euo pipefail
 
-# Activate the conda environment with the installed dependecies
+# Activate the conda environment with the installed dependecies. Make sure to use the correct conda env.
 eval "$(conda shell.bash hook)"
 conda activate eef3_project
 
@@ -20,12 +26,13 @@ skip_align=false        # Skip alignment stages.
 skip_eval=false         # Skip evaluation stages.
 ncpu=6                  # The number of cpus.
 python=python3          # Specify python to execute espnet commands.
-clean=0                 # Cleaning processed files.
+clean=1                 # Cleaning processed files.
+seq_type="ribo"         # Sequencing technique used
 quality=0.80            # Quality filter threshold for retaining reads. 
 mapping="5"             # Mapping read end
 read_len_min=25         # Minimum length of reads included
 read_len_max=35         # Maximum length of reads included
-normalised=rpm          # Read data type
+normalised="rpm"        # Read data type
 mapped_twice=0          # Reads mapped twice, 0 for false and 1 for true
 metagene_threshold=30   # Raw counts around start or stop if less ignore a gene/region
 metagene_span=60        # Number of nucleotides before and after start/stop in metagene profiles
@@ -37,8 +44,8 @@ codons_before_psite=1   #
 # Data related
 refdir=References       # Directory of reference genome.
 rawdir=Raw              # Directory of raw FASTQ files.
-groupA=
-groupB=
+groupA=""               # Depleted sample names. Space separated
+groupB=""               # Normal sample names. Space separated.
 
 help_message=$(cat << EOF
 Usage: $0 --reference "<reference_dir_name>" --raw "<raw_dir_name> --groupA "MetS2 MetS4" --groupB "WTS1 WTS3"
@@ -52,6 +59,7 @@ Options:
     --ncpu              # The number of cpus for parallel processing (default="${ncpu}").
     --python            # Specify python version (default="${python}").
     --clean             # Remove files after they are no longer necessary (default="${clean}").
+    --seq_type          # Type of sequencing used, RiboSeq(ribo) or RNA-Seq(rna) (default="${seq_type}").
     --quality           # Quality filter threshold for retaining reads based on PHRED scores. Higher is more selective (default="${quality}").
     --mapping           # 5 maps reads according to their 5' end. 3 maps reads according to their 3' end (default="${mapping}").
     --read_len_min      # Minimum length of reads included (default="${read_len_min}").
@@ -76,9 +84,9 @@ Options:
     --refdir            # Directory of reference genome (default="${refdir}").
     --rawdir            # Directory of raw FASTQ files (default="${rawdir}").
     --groupA            # Group refers to samples of different replicas but same conditions
-                        # Replica is defined as order of sample names under Group
-                        # Space separated samples incubated under specific conditions
-    --groupB
+                        # Replica is defined as order of sample names under the Group
+                        # Space separated depleted samples.
+    --groupB            # Space separated normal/wild type samples.
 
 EOF
 )
@@ -123,6 +131,11 @@ mark_stage_completed() {
     log "Stage ${stage_number} marked as completed."
 }
 
+if [ ${stage} -eq 1 ] && [ "${seq}" == "rna" ]; then
+    stage=2 # We skip the adapter trimming stage for RNA-Seq samples
+    mark_stage_completed 1
+fi
+
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     if is_stage_completed 1; then
         echo "Remove the marker file to re-run this stage" && exit 1
@@ -146,8 +159,9 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 2: Quality filter the trimmed FASTQ files based on the PHRED scores."
-    ${python} local/quality_filtering --rawdir ${rawdir} --names "${samples}" --threshold ${quality} \
+    log "Step 2: Applying a quality filter on the trimmed RiboSeq or raw RNA-Seq FASTQ files. Low quality reads i.e. those with a Phred score of less than 20 are discarded. Sequences outside the range of ${read_len_min} and ${read_len_max} are discarded."
+    ${python} local/quality_filtering.py --rawdir ${rawdir} --names "${samples}" \
+        --threshold ${quality} --seq_type ${seq_type} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}
 
     mark_stage_completed 2
@@ -158,7 +172,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 3: Remove non-coding RNAs sequences from the filtered FASTQ files using Bowtie2."
+    log "Step 3: Removing non-coding mRNA sequences from the filtered FASTQ files using Bowtie2."
     mkdir -p ${basedir}/3-Subtracted ${basedir}/3-Subtracted/Reports ${basedir}/3-Subtracted/SAM
     for sample in ${samples}; do 
         ncRNA="${refdir}/Indexes/ncRNA"
@@ -168,6 +182,9 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         bowtie2 --no-unal -p ${ncpu} --un ${unmapped} -x ${ncRNA} \
             -U ${input} -S ${output} > ${basedir}/3-Subtracted/Reports/${sample}.txt || exit 1
     done
+    if [ "${clean}" -eq 1 ]; then
+        rm -r ${basedir}/3-Subtracted/SAM
+    fi
 
     mark_stage_completed 3
 fi
@@ -177,7 +194,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 4: Align sequences to the genome from the ncRNA subtracted FASTQ files"
+    log "Step 4: Aligning coding mRNA sequences to the S. cerevisiae reference genome using HISAT2."
     mkdir -p ${basedir}/4-Aligned ${basedir}/4-Aligned/Reports
     for sample in ${samples}; do
         genome="${refdir}/Indexes/Genome"
@@ -187,7 +204,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
             -U ${input} -S ${output} > ${basedir}/4-Aligned/Reports/${sample}.txt || exit 1
     done
 
-    log "\nConverting files from SAM format to BAM"
+    log "\nConverting aligned sequences from SAM to BAM with Samtools."
     for sample in ${samples}; do
         sam=${basedir}/4-Aligned/${sample}.sam
         bam=${basedir}/4-Aligned/${sample}.bam
@@ -199,46 +216,53 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         samtools index ${bam}
         rm ${bam}.unsorted
     done
+    if [ "${clean}" -eq 1 ]; then
+        rm ${basedir}/4-Aligned/*.sam
+    fi
 
     mark_stage_completed 4
 fi
 
-if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
-    if is_stage_completed 5; then
-        echo "Remove the marker file to re-run this stage" && exit 1
+if [ ${seq_type} == "rna" ]; then
+    log "RNA-Seq Raw assignment and Meta-Gene tables currently not implemented. Use RiboSeq instead."
+elif [ ${seq_type} == "ribo" ]; then
+    if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
+        if is_stage_completed 5; then
+            echo "Remove the marker file to re-run this stage" && exit 1
+        fi
+
+        log "Step 5: Processing Raw assignments."
+        ${python} local/process_raw_assignment.py --rawdir ${rawdir} --names "${samples}" \
+            --mapped_twice ${mapped_twice} --mapping ${mapping} \
+            --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+
+        mark_stage_completed 5
     fi
 
-    log "Step 5: Processing raw assignments"
-    ${python} local/process_raw_assignment.py --rawdir ${rawdir} --names "${samples}" \
-        --mapped_twice ${mapped_twice} --mapping ${mapping} \
-        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+    if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
+        if is_stage_completed 6; then
+            echo "Remove the marker file to re-run this stage" && exit 1
+        fi
 
-    mark_stage_completed 5
-fi
+        log "Step 6: Creating Meta-Gene Tables."
+        ${python} local/create_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
+            --metagene_span ${metagene_span} --metagene_threshold ${metagene_threshold} \
+            --mapped_twice ${mapped_twice} --mapping ${mapping} --normalised ${normalised} \
+            --read_len_min ${read_len_min} --read_len_max ${read_len_max}
 
-if [ ${stage} -le 6 ] && [ ${stop_stage} -ge 6 ]; then
-    if is_stage_completed 6; then
-        echo "Remove the marker file to re-run this stage" && exit 1
+        mark_stage_completed 6
     fi
 
-    log "Step 6: Creating Meta-Gene Tables"
-    ${python} local/create_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
-        --metagene_span ${metagene_span} --metagene_threshold ${metagene_threshold} \
-        --mapped_twice ${mapped_twice} --mapping ${mapping} --normalised ${normalised} \
-        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
+    if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
+        if is_stage_completed 7; then
+            echo "Remove the marker file to re-run this stage" && exit 1
+        fi
 
-    mark_stage_completed 6
-fi
+        log "Step 7: Plotting normalized Meta-Gene tables."
+        ${python} local/plot_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
+            --metagene_span ${metagene_span} --mapping ${mapping} --normalised ${normalised} \
+            --read_len_min ${read_len_min} --read_len_max ${read_len_max}
 
-if [ ${stage} -le 7 ] && [ ${stop_stage} -ge 7 ]; then
-    if is_stage_completed 7; then
-        echo "Remove the marker file to re-run this stage" && exit 1
+        mark_stage_completed 7
     fi
-
-    log "Step 7: Creating Meta-Gene Plots"
-    ${python} local/plot_meta_tables.py --rawdir ${rawdir} --names "${samples}" \
-        --metagene_span ${metagene_span} --mapping ${mapping} --normalised ${normalised} \
-        --read_len_min ${read_len_min} --read_len_max ${read_len_max}
-
-    mark_stage_completed 7
 fi

@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""
+Author: Bhargav Pulugundla
+Last Updated: 13-Dec-2024
+
+This script references code from the GitHub repository, https://github.com/GCA-VH-lab/RiboSeqPy
+"""
+
 import os
 import pandas as pd
 import argparse
@@ -12,7 +20,9 @@ warnings.filterwarnings("ignore", category=tables.NaturalNameWarning)
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Script for raw assignment of reads.")
+    parser = argparse.ArgumentParser(
+        description="Script for assigning raw sequencing reads directly to genomic features according to the read lengths."
+    )
     parser.add_argument(
         "--rawdir", type=str, help="Directory containing raw FASTQ files."
     )
@@ -77,20 +87,6 @@ def update_dataframe(df, chromosome, strand):
     return df[columns]
 
 
-def restructure_hdf5(input_file, output_file):
-    """
-    Restructure HDF5 file from one-level keys to two-level keys by chromosome.
-    """
-    with pd.HDFStore(input_file, "r") as inp_h5:
-        with pd.HDFStore(output_file, complevel=5, complib="zlib", mode="w") as out_h5:
-            for key in inp_h5.keys():
-                data = inp_h5[key]
-                for chromosome in data["Chromosome"].unique():
-                    chromosome_data = data[data.Chromosome == chromosome].copy()
-                    chromosome_data.set_index("Position", inplace=True)
-                    out_h5.put(f"{key}/{chromosome}", chromosome_data)
-
-
 def save_to_csv(dataframe, output_file):
     """Save DataFrame to a CSV file."""
     dataframe.to_csv(output_file, sep="\t", header=True, index=True)
@@ -106,7 +102,7 @@ def process_raw_assignment(args):
     os.makedirs(assign_dir, exist_ok=True)
     os.makedirs(reports_dir, exist_ok=True)
 
-    save_csv = False  # Enable saving output to CSV
+    save_csv = True  # Enable saving output to CSV
 
     read_len_min, read_len_max = args.read_len_min, args.read_len_max
     read_len_range = f"{read_len_min}-{read_len_max}"
@@ -131,9 +127,6 @@ def process_raw_assignment(args):
         )
 
         output_hdf5 = assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}.h5"
-        restructured_hdf5 = (
-            assign_dir / f"{sample}_{mapping_type}-end_{read_len_range}_restructured.h5"
-        )
 
         log_file_path = (
             reports_dir / f"{sample}_{mapping_type}-end_{read_len_range}.log"
@@ -183,15 +176,15 @@ def process_raw_assignment(args):
             # Initialize a default value for missing keys
             default_value = [0]
             # Populate Forward and Reverse dictionaries for sequence lengths within the specified range
-            for read_length in range(read_len_min, read_len_max + 1):
+            for length in range(read_len_min, read_len_max + 1):
                 # Populate forward dictionary with counts for the current read length, defaulting to [0] if missing
-                forward_counts[read_length] = Counter(
-                    forward_counts.get(read_length, default_value)
+                forward_counts[length] = Counter(
+                    forward_counts.get(length, default_value)
                 )
 
                 # Populate reverse dictionary with counts for the current read length, defaulting to [0] if missing
-                reverse_counts[read_length] = Counter(
-                    reverse_counts.get(read_length, default_value)
+                reverse_counts[length] = Counter(
+                    reverse_counts.get(length, default_value)
                 )
 
             forward_summary = pd.concat(
@@ -252,10 +245,6 @@ def process_raw_assignment(args):
         with pd.HDFStore(output_hdf5, complevel=5, complib="zlib", mode="a") as store:
             store.put("Forward_RPM", forward_summary, format="table", data_columns=True)
             store.put("Reverse_RPM", reverse_summary, format="table", data_columns=True)
-
-        # TODO: Causing a weird bug. Needs to be fixed. Don't need this for now.
-        # restructure_hdf5(output_hdf5, restructured_hdf5)
-        # log_file.write(f"\nRestructured HDF5: {restructured_hdf5}\n")
 
         log_file.close()
         bam_file.close()

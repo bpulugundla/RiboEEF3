@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+"""
+Author: Bhargav Pulugundla
+Last Updated: 13-Dec-2024
+"""
+
 import os
 import subprocess
 import gzip
@@ -32,6 +38,13 @@ def parse_args():
         help="Quality score threshold.",
     )
     parser.add_argument(
+        "--seq_type",
+        type=str,
+        choices=["ribo", "rna"],
+        default="ribo",
+        help="Type of sequencing",
+    )
+    parser.add_argument(
         "--read_len_min",
         type=int,
         default=25,
@@ -49,7 +62,7 @@ def parse_args():
 
 def quality_filtering(args):
     """
-    Filters FASTQ sequences based on PHRED score and read length.
+    Filters FASTQ sequences based on PHRED scores and read lengths for RiboSeq.
 
     Args:
         args (argparse.Namespace): Parsed arguments containing filtering parameters.
@@ -118,7 +131,10 @@ def quality_filtering(args):
         low_qual, short_reads, long_reads, included_reads = 0, 0, 0, 0
 
         # Input and output file paths for the sample
-        trimmed_file = f"{base_dir}/1-Trimmed/{name}_trimmed.fastq.gz"
+        if args.seq_type == "ribo":
+            trimmed_file = f"{base_dir}/1-Trimmed/{name}_trimmed.fastq.gz"
+        elif args.seq_type == "rna":
+            trimmed_file = f"{args.rawdir}/{name}.fastq.gz"
         filtered_file = f"{filtered_dir}/{name}_filtered.fastq"
 
         # Calculate the total number of reads in the sample
@@ -145,7 +161,7 @@ def quality_filtering(args):
                 # Classify reads based on length
                 if read_length < args.read_len_min:
                     short_reads += 1
-                elif read_length > args.read_len_max:
+                elif (args.seq_type == "ribo") and (read_length > args.read_len_max):
                     long_reads += 1
                 else:
                     # Calculate the probability score for the read

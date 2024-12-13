@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""
+Author: Bhargav Pulugundla
+Last Updated: 13-Dec-2024
+
+This script references code from the GitHub repository, https://github.com/GCA-VH-lab/RiboSeqPy
+"""
+
 import os
 import argparse
 import pandas as pd
@@ -17,7 +25,7 @@ def parse_args():
     Parse command-line arguments for the script.
     """
     parser = argparse.ArgumentParser(
-        description=("This script generates meta-gene plots from meta-gene tables")
+        description=("This script generates meta-gene plots from meta-gene tables.")
     )
 
     parser.add_argument("--rawdir", type=str, help="Raw FASTQ file directory")
@@ -141,7 +149,7 @@ def generate_metag_plot_pdf(args):
             if os.path.isfile(input_file):
                 # Configure figure dimensions
                 fig_width = 8
-                fig_height = 1.2 * len(read_lengths)
+                fig_height = 2 * len(read_lengths)
                 fig, axes = plt.subplots(
                     nrows=len(read_lengths), figsize=(fig_width, fig_height)
                 )
@@ -200,11 +208,11 @@ def trim_dataframe(data_frame, mapping, position_type, span):
     if mapping == "5":
         if position_type == "Start":
             return trim_df(
-                data_frame, span, position_type, inside_gene=39, outside_gene=21
+                data_frame, span, position_type, inside_gene=40, outside_gene=10
             )
         elif position_type == "Stop":
             return trim_df(
-                data_frame, span, position_type, inside_gene=60, outside_gene=3
+                data_frame, span, position_type, inside_gene=40, outside_gene=10
             )
     elif mapping == "3":
         if position_type == "Start":

@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+"""
+Author: Bhargav Pulugundla
+Last Updated: 13-Dec-2024
+
+This script references code from the GitHub repository, https://github.com/GCA-VH-lab/RiboSeqPy
+"""
+
 import os
 import pandas as pd
 import argparse
@@ -50,7 +58,7 @@ def parse_args():
         "--metagene_threshold",
         type=int,
         default=30,
-        help="Number of nucleotides before and after start/stop",
+        help="Minimum raw counts around start/stop for considering a gene/region",
     )
     parser.add_argument(
         "--read_len_min", type=int, default=25, help="Minimum length of reads"
