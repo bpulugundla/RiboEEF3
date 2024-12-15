@@ -3,7 +3,8 @@
 Author: Bhargav Pulugundla
 Last Updated: 13-Dec-2024
 
-This project focuses on replicating and validating the findings presented by Kasari et al. in their study, available at: https://www.nature.com/articles/s41598-019-39403-y.
+This project focuses on replicating and validating the findings presented by Kasari et al. in their study, 
+available at: https://www.nature.com/articles/s41598-019-39403-y.
 """
 
 # Set bash to 'debug' mode, it will exit on :
@@ -141,7 +142,8 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 1: Trimming adapter sequnces from the ${samples} FASTQ files in ${rawdir} using CutAdapt. CutAdapt here removes the adapter sequence CTGTAGGCACCATCAAT from high-throughput sequencing reads."
+    log "Step 1: Trimming adapter sequnces from the ${samples} FASTQ files in ${rawdir} using CutAdapt. 
+    CutAdapt here removes the adapter sequence CTGTAGGCACCATCAAT from high-throughput sequencing reads."
     mkdir -p ${basedir}/1-Trimmed ${basedir}/1-Trimmed/Reports
     for sample in ${samples}; do
         input="${rawdir}/${sample}.fastq.gz"
@@ -159,7 +161,9 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
         echo "Remove the marker file to re-run this stage" && exit 1
     fi
 
-    log "Step 2: Applying a quality filter on the trimmed RiboSeq or raw RNA-Seq FASTQ files. Low quality reads i.e. those with a Phred score of less than 20 are discarded. Sequences outside the range of ${read_len_min} and ${read_len_max} are discarded."
+    log "Step 2: Applying a quality filter on the trimmed RiboSeq or raw RNA-Seq FASTQ files. 
+    Low quality reads i.e. those with a Phred score of less than 20 are discarded. Sequences outside 
+    the range of ${read_len_min} and ${read_len_max} are discarded."
     ${python} local/quality_filtering.py --rawdir ${rawdir} --names "${samples}" \
         --threshold ${quality} --seq_type ${seq_type} \
         --read_len_min ${read_len_min} --read_len_max ${read_len_max}

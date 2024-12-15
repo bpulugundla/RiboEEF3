@@ -1,7 +1,18 @@
 # RiboEEF3
  The [study](https://www.nature.com/articles/s41598-019-39403-y), Ribosome profiling analysis of eEF3-depleted Saccharomyces cerevisiae, investigates the effects of depleting eukaryotic elongation factor 3 (eEF3) in Saccharomyces cerevisiae using ribosome profiling. Findings reveal that eEF3 depletion reduces translation elongation efficiency and impacts ribosomal stalling, particularly at P-site proline residues. However, it does not significantly impair ribosome recycling. This highlights eEF3's crucial, general role in yeast protein synthesis elongation.
 
-## Setting Up the Environment
+## How to Run the Code
+
+### 1. Clone the Repository
+First, clone the repository to your local machine using Git:
+```bash
+git clone https://github.com/bpulugundla/RiboEEF3.git
+cd RiboEEF3
+```
+
+### 2. Install Dependencies
+
+### Setting Up the Conda Environment
 
 Setting up the environment with the required packages/tools can be done in two ways. Both methods require Conda to be installed.
 
@@ -17,7 +28,7 @@ wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
 ```
 
-### Option 1: Dependencies
+#### Option 1: Install from Conda channels 
 
 1) Python:
 
@@ -66,13 +77,19 @@ bash Miniconda3-latest-Linux-x86_64.sh
     conda install bioconda::cufflinks
 ```
 
-### Option 2: Install dependencies using pre-created conda env config
+#### Option 2: Install dependencies using pre-created env config
 
   An easier way to replicate the packages and its dependencies is to just use the environment.yml to create an identical conda environment.
 
 ```
     conda env create -f environment.yml
 ``` 
+
+## 3. Run the main script
+
+```
+./run.sh --refdir References --rawdir Raw --groupA "ERR2660266 ERR2660267" --groupB "ERR2660262 ERR2660263" --stage 1 --stop_stage 7
+```
 ### Additional data files
 
   * Genome.fa  - genome sequence in FastA format
@@ -81,3 +98,11 @@ bash Miniconda3-latest-Linux-x86_64.sh
 
 Other data files are derived based on those three and commands for that are described in the file  `build_index.sh`.
 _Saccharomyces cerevisiae_ genome, annotation, ncRNA and indexes are locating in the folder **References/**.
+
+### Get Help
+For a complete list of arguments and their descriptions, run the following command:
+```bash
+./run.sh --help
+```
+
+
